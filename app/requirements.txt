@@ -1,0 +1,20 @@
+# Web Framework
+fastapi
+uvicorn[standard]
+
+# Google Generative AI
+google-generativeai
+
+# RAG & Document Processing
+langchain
+langchain-google-genai
+pypdf
+beautifulsoup4
+
+# Vector Database & Embeddings
+chromadb
+langchain-community
+sentence-transformers # Ottima libreria per embedding open-source
+
+# Configuration
+python-dotenv
