@@ -1,6 +1,6 @@
 # app/main.py
 from fastapi import FastAPI
-from .api.endpoints import matching
+from .api.endpoints import endpoints_student
 
 app = FastAPI(
     title="Erasmus Suggester API",
@@ -9,7 +9,7 @@ app = FastAPI(
 )
 
 # Include il router con l'endpoint /match
-app.include_router(matching.router, prefix="/api/v1")
+app.include_router(endpoints_student.router, prefix="/api/v1")
 
 @app.get("/", tags=["Root"])
 def read_root():
