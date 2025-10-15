@@ -1,49 +1,56 @@
 # app/api/endpoints/endpoints_student.py
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from typing import List
 from ...schemas.student import (
     UniversityRequest, ErasmusProgramResponse,
     DepartmentAndStudyPlanRequest, DestinationsResponse,
     DestinationUniversityRequest, ExamsAnalysisResponse
 )
-from ...services.rag_service import get_call_summary
+from ...services.rag_service import get_call_summary, get_available_universities
+from uuid import uuid4
 
 router = APIRouter()
 
 @router.post("/step1", response_model=ErasmusProgramResponse)
-async def get_erasmus_program(request: UniversityRequest):
+async def get_erasmus_program(body: UniversityRequest, req: Request):
     """
     STEP 1: Riceve l'università di provenienza, identifica il bando specifico
     e restituisce un riassunto basato solo su quel documento.
     """
     try:
         # La logica è ora incapsulata nel servizio RAG
-        result = await get_call_summary(request.home_university)
-        return ErasmusProgramResponse(**result)
+        result = await get_call_summary(body.home_university)
+
+        # Crea una sessione e memorizza l'università scelta
+        session_id = str(uuid4())
+        req.app.state.session_store[session_id] = {"home_university": body.home_university}
+
+        # Includi il session_id nella risposta
+        return ErasmusProgramResponse(**{**result, "session_id": session_id})
     except Exception as e:
         # Log dell'errore per un debug più semplice
         print(f"Errore nell'endpoint /step1: {e}")
         raise HTTPException(status_code=500, detail=f"Si è verificato un errore interno: {e}")
 
 @router.post("/step2", response_model=DestinationsResponse)
-async def analyze_destinations(request: DepartmentAndStudyPlanRequest):
+async def analyze_destinations(request: DepartmentAndStudyPlanRequest, req: Request):
     """
     STEP 2: Riceve dipartimento e piano di studi.
     Analizza i PDF delle destinazioni usando Gemini e restituisce le università compatibili.
     """
     try:
-        # TODO: Implementare analisi con Gemini dei PDF delle destinazioni. 
-        # Attenzione che il file delle destinazioni deve essere interamente analizzato da gemini
-        # non solo alcuni chunks
+        # Recupera la home_university dalla sessione
+        session = req.app.state.session_store.get(request.session_id)
+        if not session or "home_university" not in session:
+            raise HTTPException(status_code=400, detail="Sessione non valida o scaduta. Rieseguire lo Step 1.")
 
-        destinations = [
-            {
-                "id": "uni123",
-                "city_id": "city456",
-                "name": "Technical University of Munich",
-                "description": "Università tecnica con forte focus su..."
-            }
-        ]
-        return DestinationsResponse(destinations=destinations)
+        home_university = session["home_university"]
+
+        # Chiamata al servizio per analizzare le destinazioni del dipartimento
+        from ...services.rag_service import analyze_destinations_for_department
+        destinations_list = await analyze_destinations_for_department(home_university=home_university, department=request.department)
+
+        return DestinationsResponse(destinations=destinations_list)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -69,3 +76,16 @@ async def analyze_exams(request: DestinationUniversityRequest):
         return ExamsAnalysisResponse(**response)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/universities", response_model=List[str])
+async def list_available_universities():
+    """
+    Restituisce la lista delle università per cui è disponibile un bando.
+    Questa lista può essere usata nel frontend per popolare un menu a tendina.
+    """
+    try:
+        universities = get_available_universities()
+        return universities
+    except Exception as e:
+        print(f"Errore nell'endpoint /universities: {e}")
+        raise HTTPException(status_code=500, detail="Errore nel recupero delle università disponibili.")

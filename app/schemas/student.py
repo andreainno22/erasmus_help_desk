@@ -1,6 +1,6 @@
 # app/schemas/student.py
 
-from pydantic import BaseModel, Field, constr
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 from enum import Enum
 
@@ -18,12 +18,14 @@ class Period(str, Enum):
 # STEP 1: Richiesta iniziale con università
 class UniversityRequest(BaseModel):
     """Richiesta informazioni sul bando Erasmus."""
+    model_config = ConfigDict(extra='forbid')
     home_university: str = Field(..., example="University of Pisa", description="Università di provenienza")
 
 # STEP 2: Richiesta analisi destinazioni compatibili
 class DepartmentAndStudyPlanRequest(BaseModel):
     """Richiesta analisi destinazioni basata su dipartimento, piano di studi e periodo."""
-    home_university: str = Field(..., example="University of Pisa", description="Università di provenienza dello studente, per filtrare le destinazioni corrette.")
+    model_config = ConfigDict(extra='forbid')
+    session_id: str = Field(..., example="6f1d2c9e-9a3b-4a9e-94a1-3e2f8c5d9b1a", description="ID di sessione restituito dallo step 1")
     department: str = Field(..., example="Computer Science", description="Dipartimento di afferenza")
     study_plan: List[str] = Field(..., example=["Algorithms", "Machine Learning", "Database"], 
                                 description="Lista degli esami nel piano di studi")
@@ -45,6 +47,7 @@ class ErasmusProgramResponse(BaseModel):
     """Risposta con informazioni sul bando Erasmus."""
     has_program: bool = Field(..., description="True se il bando esiste, False altrimenti")
     summary: Optional[str] = Field(None, description="Riassunto del bando se esistente")
+    session_id: Optional[str] = Field(None, description="ID di sessione da usare negli step successivi")
 
 # STEP 2: Risposta con destinazioni compatibili
 class DestinationUniversity(BaseModel):
