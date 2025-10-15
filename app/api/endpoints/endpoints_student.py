@@ -5,62 +5,24 @@ from ...schemas.student import (
     DepartmentAndStudyPlanRequest, DestinationsResponse,
     DestinationUniversityRequest, ExamsAnalysisResponse
 )
-from ...services.vector_db_service import get_retriever
-from langchain_google_genai import ChatGoogleGenerativeAI
-from ...core.config import settings, DB_PATH
-from typing import Optional
-from ...services.vector_db_service import get_retriever
-DB_PATH = "vector_db/chroma"
+from ...services.rag_service import get_call_summary
 
 router = APIRouter()
 
 @router.post("/step1", response_model=ErasmusProgramResponse)
 async def get_erasmus_program(request: UniversityRequest):
     """
-    STEP 1: Riceve università di provenienza.
-    Restituisce il riassunto del bando Erasmus se disponibile.
+    STEP 1: Riceve l'università di provenienza, identifica il bando specifico
+    e restituisce un riassunto basato solo su quel documento.
     """
     try:
-        # Recupera il contenuto dal vector store
-        retriever = get_retriever(DB_PATH, category='calls')
-        docs = retriever.get_relevant_documents(
-            f"informazioni e riassunto del bando erasmus per {request.home_university}"
-        )
-        
-        if not docs:
-            return ErasmusProgramResponse(has_program=False)
-
-        # Unisci il contenuto di tutti i chunk trovati per dare a Gemini il contesto completo.
-        full_context = "\n\n---\n\n".join([doc.page_content for doc in docs])
-        
-        # Genera riassunto con Gemini
-        template = """
-        Sei un assistente specializzato in programmi Erasmus. 
-        Analizza il seguente bando Erasmus e creane un riassunto conciso, 
-        senza inventare informazioni, ma basandoti solo sul documento allegato, 
-        evidenziando:
-        - Periodo di apertura del bando
-        - Requisiti principali (inclusi i requisiti linguistici)
-        - Scadenze importanti
-        - Processo di candidatura
-        
-        Bando:
-        {content}
-        """
-        
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-pro-latest",
-            google_api_key=settings.GOOGLE_API_KEY
-        )
-        
-        summary = await llm.invoke(
-            template.format(content=full_context)
-        )
-        
-        return ErasmusProgramResponse(has_program=True, summary=str(summary))
-        
+        # La logica è ora incapsulata nel servizio RAG
+        result = await get_call_summary(request.home_university)
+        return ErasmusProgramResponse(**result)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Log dell'errore per un debug più semplice
+        print(f"Errore nell'endpoint /step1: {e}")
+        raise HTTPException(status_code=500, detail=f"Si è verificato un errore interno: {e}")
 
 @router.post("/step2", response_model=DestinationsResponse)
 async def analyze_destinations(request: DepartmentAndStudyPlanRequest):
@@ -69,7 +31,10 @@ async def analyze_destinations(request: DepartmentAndStudyPlanRequest):
     Analizza i PDF delle destinazioni usando Gemini e restituisce le università compatibili.
     """
     try:
-        # TODO: Implementare analisi con Gemini dei PDF delle destinazioni
+        # TODO: Implementare analisi con Gemini dei PDF delle destinazioni. 
+        # Attenzione che il file delle destinazioni deve essere interamente analizzato da gemini
+        # non solo alcuni chunks
+
         destinations = [
             {
                 "id": "uni123",
