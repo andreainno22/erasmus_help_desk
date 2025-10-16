@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Erasmus Help Desk (HTML + CSS + JS)</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <title>Erasmus Help Desk</title>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="app-header">
@@ -19,14 +19,14 @@
         <div class="api-control">
           <label for="api_base" class="label">API Base</label>
           <input id="api_base" class="input" placeholder="http://127.0.0.1:8000" />
-          <button id="save_api_btn" class="btn">Salva</button>
+          <button id="save_api_btn" class="btn btn-primary btn-full">Salva</button>
           <span id="saved_flag" class="saved-flag" hidden>Salvato ✔</span>
         </div>
         <label class="checkbox">
           <input type="checkbox" id="mock_mode" />
           Mock mode
         </label>
-        <button id="reset_btn" class="linklike">Reset</button>
+        <button id="reset_btn" class="btn">Reset</button>
       </div>
     </header>
 
@@ -42,10 +42,10 @@
             <div class="card-title">1) Università di provenienza</div>
             <div class="space-y">
               <div class="space-y-xxs">
-                <label for="university" class="label">Ateneo</label>
+                <label for="university" class="label">Ateneo <span class="required" aria-hidden="true">*</span></label>
                 <input id="university" class="input" placeholder="Es. Università di Pisa" />
               </div>
-              <button id="find_bando_btn" class="btn">Cerca bando</button>
+              <button id="find_bando_btn" class="btn btn-primary btn-full">Cerca bando</button>
             </div>
           </div>
 
@@ -53,11 +53,11 @@
             <div class="card-title">2) Dipartimento &amp; periodo</div>
             <div class="space-y">
               <div class="space-y-xxs">
-                <label for="dept" class="label">Dipartimento</label>
+                <label for="dept" class="label">Dipartimento <span class="required" aria-hidden="true">*</span></label>
                 <input id="dept" class="input" placeholder="Es. Ingegneria Informatica" />
               </div>
               <div class="space-y-xxs">
-                <label for="period" class="label">Semestre</label>
+                <label for="period" class="label">Semestre <span class="required" aria-hidden="true">*</span></label>
                 <select id="period" class="select">
                   <option value="Fall">Fall</option>
                   <option value="Spring">Spring</option>
@@ -67,7 +67,27 @@
                 <label for="study" class="label">Piano di studi (testo libero)</label>
                 <textarea id="study" class="textarea" rows="5" placeholder="Elenca esami sostenuti/da sostenere, prerequisiti, preferenze…"></textarea>
               </div>
-              <button id="shortlist_btn" class="btn">Genera shortlist mete</button>
+
+              <!-- Step 2: Upload Piano di Studi (PDF obbligatorio) -->
+              <div class="space-y-xxs" id="study_pdf_block" style="margin-bottom:12px;">
+                <label for="study_pdf" class="label">Carica piano di studi (PDF) <span class="required" aria-hidden="true">*</span></label>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <button type="button" id="select_pdf_btn" class="btn">Seleziona PDF</button>
+                  <div id="study_pdf_name" class="text-muted" aria-live="polite" aria-atomic="true">Nessun file selezionato</div>
+                </div>
+                <div id="study_pdf_dropzone" class="dropzone" tabindex="0" aria-label="Trascina qui il PDF del piano di studi" style="margin-top:8px; padding:12px;">
+                  <div class="dz-inner">
+                    <div class="dz-title">Trascina qui il PDF</div>
+                    <div class="dz-sub">oppure clicca per selezionarlo</div>
+                  </div>
+                </div>
+                <!-- Input file reale (nascosto ma accessibile da JS) -->
+                <input id="study_pdf" type="file" accept="application/pdf" hidden />
+              </div>
+
+              <div>
+                <button id="shortlist_btn" class="btn btn-primary btn-full">Genera shortlist mete</button>
+              </div>
             </div>
           </div>
         </section>
@@ -102,6 +122,6 @@
       <div class="spinner" aria-label="Loading"></div>
     </div>
 
-    <script src="./app.js"></script>
+    <script defer src="app.js"></script>
   </body>
 </html>

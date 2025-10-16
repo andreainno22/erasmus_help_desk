@@ -11,6 +11,8 @@
 }
 
 * { box-sizing: border-box; }
+
+.required { color: #c00; }
 html, body { height: 100%; }
 body {
   margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji", "Segoe UI Emoji";
@@ -41,11 +43,21 @@ body {
 .input:focus, .select:focus, .textarea:focus { box-shadow: 0 0 0 2px #00000020; border-color: #000; }
 
 .btn {
-  border: 1px solid #000; background: #000; color: #fff; font-weight: 700;
-  padding: 8px 12px; border-radius: 12px; cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  cursor: pointer;
 }
-.btn[disabled] { background: #e5e7eb; color: #94a3b8; border-color: #e5e7eb; cursor: not-allowed; }
-.linklike { background: none; border: none; color: #111827; text-decoration: underline; font-weight: 700; cursor: pointer; }
+.btn:focus-visible { outline: 3px solid rgba(0,0,0,.2); outline-offset: 2px; }
+.btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-primary:hover { opacity: .95; }
+.btn-primary:active { opacity: .9; }
+.btn-full { width: 100%; }
 
 .checkbox { display: flex; gap: 6px; align-items: center; font-size: 14px; }
 
@@ -98,7 +110,26 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-
 /* Nascondi davvero l’overlay quando c’è l’attributo hidden */
 .spinner-backdrop[hidden] { display: none !important; }
 
+/* Dropzone */
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--bg);
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+  outline: none;
+  cursor: pointer;
+}
+.dropzone .dz-inner { text-align: center; }
+.dropzone .dz-title { font-weight: 600; }
+.dropzone .dz-sub { color: var(--muted, #777); font-size: 0.9rem; }
+.dropzone:focus { box-shadow: 0 0 0 3px rgba(0,120,255,.2); }
+.dropzone.dragover {
+  border-color: #0b5fff;
+  background: rgba(11,95,255,.06);
+}
+
+.btn:disabled { opacity: .6; cursor: not-allowed; }

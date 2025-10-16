@@ -1,9 +1,29 @@
 /* -------------------------------------------------------
    Erasmus Help Desk – HTML + JS (no framework)
    Replica flusso: bando → mete → esami con Mock mode.
+   Modifiche:
+   - Step 2: PDF del piano di studi OBBLIGATORIO per generare la shortlist
+   - Invio a backend in multipart/form-data (con campo file `study_plan_pdf`)
+   - Shortlist: link "Sito Erasmus" per ogni meta
 -------------------------------------------------------- */
 
 const DEFAULT_API_BASE = "http://127.0.0.1:8000";
+
+
+const SESSION_KEYS = {
+  UNIVERSITY_FROM: "EHD_university_from",
+};
+
+function setSession(key, value) {
+  try { sessionStorage.setItem(key, value ?? ""); } catch {}
+}
+function getSession(key) {
+  try { return sessionStorage.getItem(key) || ""; } catch { return ""; }
+}
+function clearSession(key) {
+  try { sessionStorage.removeItem(key); } catch {}
+}
+
 
 // ------- Utils: API base resolution (query → window → localStorage → process → default)
 function resolveApiBase() {
@@ -31,9 +51,7 @@ function resolveApiBase() {
   } catch {}
   // 4) from process.env (guarded – browsers usually don't have this)
   try {
-    // eslint-disable-next-line no-undef
     if (typeof process !== "undefined") {
-      // eslint-disable-next-line no-undef
       const env = process?.env?.NEXT_PUBLIC_API_BASE;
       if (env && env.trim()) return env.trim();
     }
@@ -66,12 +84,14 @@ const mockShortlist = {
       description:
         "Rete solida di corsi ML/Networks, insegnamento EN, corsi Spring/Fall, requisiti lingua EN B2.",
       citations: [{ doc_id: "upc_eetac_guide_2025.pdf", page: 12, url: "#" }],
+      site_url: "https://www.upc.edu/en/education/ects/erasmus",
     },
     {
       id_university: "TUM",
       id_city: "Munich",
       description: "Offerta avanzata DL/CV, progetti industry, lingua EN B2.",
       citations: [{ doc_id: "tum_catalog_2025.pdf", page: 5, url: "#" }],
+      site_url: "https://www.tum.de/en/studies/going-abroad/erasmus",
     },
   ],
 };
@@ -91,7 +111,7 @@ const mockExams = {
   ],
 };
 
-// ------- State (semplicissimo)
+// ------- State (aggiunti campi file)
 const state = {
   step: 1,
   apiBase: resolveApiBase(),
@@ -104,6 +124,8 @@ const state = {
   department: "",
   period: "Fall",
   studyPlanText: "",
+  studyPlanFile: null,
+  studyPlanFileName: "",
 
   // results
   bando: null,
@@ -135,6 +157,11 @@ const periodSelect = $("#period");
 const studyInput = $("#study");
 const findBandoBtn = $("#find_bando_btn");
 const shortlistBtn = $("#shortlist_btn");
+const studyPdfInput = $("#study_pdf");
+const studyPdfNameEl = $("#study_pdf_name");
+const studyPdfDropzone = $("#study_pdf_dropzone");
+const selectPdfBtn = $("#select_pdf_btn");
+
 
 // ------- Rendering
 function renderStepper() {
@@ -195,10 +222,20 @@ function renderBando() {
   `;
 }
 
+function renderErasmusLink(item) {
+  if (item.site_url) {
+    return `<div style="margin-top:6px"><a class="linklike" href="${item.site_url}" target="_blank" rel="noopener">Sito Erasmus</a></div>`;
+  }
+  const q = encodeURIComponent(`Erasmus ${item.id_university || ""} ${item.id_city || ""}`.trim());
+  return q
+    ? `<div style="margin-top:6px"><a class="linklike text-muted" href="https://www.google.com/search?q=${q}" target="_blank" rel="noopener">Cerca info Erasmus</a></div>`
+    : "";
+}
+
 function renderShortlist() {
   if (!state.shortlist) {
     shortlistBox.className = "text-muted";
-    shortlistBox.innerHTML = "Compila dipartimento/semestre/piano di studi e genera la shortlist.";
+    shortlistBox.innerHTML = "Carica il PDF del piano di studi, compila dipartimento/semestre e genera la shortlist.";
     return;
   }
   if (!state.shortlist.items || state.shortlist.items.length === 0) {
@@ -213,11 +250,12 @@ function renderShortlist() {
         .map(
           (it) => `
         <li class="card" style="border-color:${state.selectedMeta?.id_university === it.id_university ? '#000' : 'var(--border)'}">
-          <div style="display:flex; gap:12px; justify-content:space-between; align-items:flex-start;">
+          <div style="display:flex; gap:12px; justify-content:space-between; align-items:flex-start; width:100%">
             <div>
               <div class="label">${it.id_university} – ${it.id_city}</div>
               <p class="text-muted" style="margin-top:4px">${it.description}</p>
               ${renderCitations(it.citations)}
+              ${renderErasmusLink(it)}
             </div>
             <button class="btn" data-university="${it.id_university}">Vedi esami</button>
           </div>
@@ -318,6 +356,7 @@ function renderAll() {
   deptInput.value = state.department;
   periodSelect.value = state.period;
   studyInput.value = state.studyPlanText;
+  if (studyPdfNameEl) studyPdfNameEl.textContent = state.studyPlanFileName ? `Caricato: ${state.studyPlanFileName}` : ""; // NEW
 
   renderStepper();
   renderBando();
@@ -326,8 +365,16 @@ function renderAll() {
   renderError();
 
   spinner.hidden = !state.loading;
-  findBandoBtn.disabled = state.loading || !state.universityFrom.trim();
-  shortlistBtn.disabled = state.loading || !state.bando || state.bando.status !== "found" || !state.department.trim();
+  findBandoBtn.disabled = !!(state.loading || !state.universityFrom.trim());
+  // NEW: richiede PDF oltre a bando found + department non vuoto
+  shortlistBtn.disabled = !!(
+    state.loading ||
+    !state.bando ||
+    state.bando.status !== "found" ||
+    !state.department.trim() ||
+    !state.period ||
+    !state.studyPlanFile
+  ); // PDF obbligatorio
 }
 
 // ------- Actions
@@ -362,6 +409,8 @@ async function fetchBando() {
       payload = await res.json();
     }
     state.bando = payload;
+    // Persist university in session after a successful Step 1
+    setSession(SESSION_KEYS.UNIVERSITY_FROM, state.universityFrom.trim());
     state.step = 1;
   } catch (e) {
     setError(e?.message || "Errore sconosciuto");
@@ -378,15 +427,17 @@ async function fetchShortlist() {
       await new Promise((r) => setTimeout(r, 450));
       payload = mockShortlist;
     } else {
+      // NEW: usa FormData per inviare anche il file PDF
+      const fd = new FormData();
+      fd.append("university_from", state.universityFrom.trim());
+      fd.append("department", state.department.trim());
+      fd.append("period", state.period);
+      if (state.studyPlanText.trim()) fd.append("study_plan_text", state.studyPlanText.trim());
+      if (state.studyPlanFile) fd.append("study_plan_pdf", state.studyPlanFile, state.studyPlanFile.name);
+
       const res = await fetch(`${state.apiBase}/mete/shortlist`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          university_from: state.universityFrom.trim(),
-          department: state.department.trim(),
-          study_plan_text: state.studyPlanText.trim(),
-          period: state.period,
-        }),
+        body: fd, // niente Content-Type manuale: lo mette il browser
       });
       if (!res.ok) throw new Error(`Errore ${res.status}`);
       payload = await res.json();
@@ -426,6 +477,26 @@ async function fetchExams(meta) {
   }
 }
 
+function handlePdfFile(file) {
+  if (!file) {
+    state.studyPlanFile = null;
+    state.studyPlanFileName = "";
+    renderAll();
+    return;
+  }
+  if (file.type !== "application/pdf") {
+    alert("Per favore carica un file PDF valido.");
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) { // 10 MB
+    alert("Il PDF supera i 10 MB.");
+    return;
+  }
+  state.studyPlanFile = file;
+  state.studyPlanFileName = file.name;
+  renderAll();
+}
+
 // ------- Events & boot
 function wireEvents() {
   apiInput.addEventListener("input", () => (state.apiBase = apiInput.value));
@@ -442,18 +513,83 @@ function wireEvents() {
     renderAll();
   });
 
-  resetBtn.addEventListener("click", () => resetFromStep(1));
+  resetBtn.addEventListener("click", () => { clearSession(SESSION_KEYS.UNIVERSITY_FROM); resetFromStep(1); });
+  univInput.addEventListener("input", () => {
+    state.universityFrom = univInput.value;
+    setSession(SESSION_KEYS.UNIVERSITY_FROM, state.universityFrom.trim());
+    renderAll();
+  });
+  deptInput.addEventListener("input", () => {
+    state.department = deptInput.value;
+    renderAll();
+  });
+  periodSelect.addEventListener("change", () => {
+    state.period = periodSelect.value;
+    renderAll();
+  });
+  studyInput.addEventListener("input", () => {
+    state.studyPlanText = studyInput.value;
+    renderAll();
+  });
 
-  univInput.addEventListener("input", () => (state.universityFrom = univInput.value));
-  deptInput.addEventListener("input", () => (state.department = deptInput.value));
-  periodSelect.addEventListener("change", () => (state.period = periodSelect.value));
-  studyInput.addEventListener("input", () => (state.studyPlanText = studyInput.value));
+  // Gestione upload PDF obbligatorio
+  if (studyPdfInput) {
+    studyPdfInput.addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      handlePdfFile(file);
+    });
+  }
 
-  findBandoBtn.addEventListener("click", () => fetchBando());
-  shortlistBtn.addEventListener("click", () => fetchShortlist());
+  // Pulsante "Seleziona PDF" -> apre il file picker dell'input nascosto
+  if (selectPdfBtn) {
+    selectPdfBtn.addEventListener("click", () => studyPdfInput?.click());
+  }
+
+  // Dropzone: click e tastiera per accessibilità
+  if (studyPdfDropzone) {
+    studyPdfDropzone.addEventListener("click", () => studyPdfInput?.click());
+    studyPdfDropzone.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); studyPdfInput?.click(); }
+    });
+
+    // Evidenzia durante drag
+    ["dragenter", "dragover"].forEach((ev) =>
+      studyPdfDropzone.addEventListener(ev, (e) => {
+        e.preventDefault(); e.stopPropagation();
+        studyPdfDropzone.classList.add("dragover");
+      })
+    );
+    ["dragleave", "dragend"].forEach((ev) =>
+      studyPdfDropzone.addEventListener(ev, (e) => {
+        e.preventDefault(); e.stopPropagation();
+        studyPdfDropzone.classList.remove("dragover");
+      })
+    );
+
+    // Drop del file
+    studyPdfDropzone.addEventListener("drop", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      studyPdfDropzone.classList.remove("dragover");
+      const file = e.dataTransfer?.files?.[0];
+      handlePdfFile(file);
+    });
+  }
+
+  findBandoBtn.addEventListener("click", () => { if (findBandoBtn.disabled) return; fetchBando(); });
+  shortlistBtn.addEventListener("click", () => {
+    if (shortlistBtn.disabled) return;
+    if (!state.studyPlanFile) {
+      alert("Carica il PDF del piano di studi.");
+      return;
+    }
+    fetchShortlist();
+  });
 }
 
 function init() {
+  // Prefill from session if present
+  const savedUni = getSession(SESSION_KEYS.UNIVERSITY_FROM);
+  if (savedUni && !state.universityFrom) state.universityFrom = savedUni;
   wireEvents();
   renderAll();
 }
