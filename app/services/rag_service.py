@@ -1,24 +1,97 @@
 # app/services/rag_service.py
+import os
+import json
+import google.generativeai as genai
+import fitz  # PyMuPDF
+import re
+
 from .vector_db_service import get_retriever
 from ..core.config import settings
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import PromptTemplate
-from langchain.schema.runnable import RunnablePassthrough
-from langchain.schema.output_parser import StrOutputParser
-import json
 
-# Percorso del database vettoriale creato dallo script ingest.py
-DB_PATH = "vector_db/chroma"
+# --- CONFIGURAZIONE DI GOOGLE AI ---
+# Questa parte viene eseguita una sola volta quando il servizio viene importato.
+# Configura la libreria con la chiave API caricata da .env
+try:
+    if not settings.GOOGLE_API_KEY:
+        raise ValueError("GOOGLE_API_KEY non è impostato nel file .env o non è stato caricato.")
+    genai.configure(api_key=settings.GOOGLE_API_KEY)
+except Exception as e:
+    print(f"ATTENZIONE: Errore durante la configurazione di Google AI: {e}")
+    pass
+
+async def get_call_summary(university_name: str) -> dict:
+    """
+    Identifica il bando, recupera i dati e genera un riassunto
+    utilizzando il Google AI Python SDK (genai).
+    """
+    try:
+        # --- 1. IDENTIFICA IL FILE DEL BANDO SPECIFICO ---
+        calls_dir = "data/calls"
+        
+        target_filename = None
+        if os.path.exists(calls_dir):
+            for filename in os.listdir(calls_dir):
+                if university_name in filename.lower() and filename.endswith(".pdf"):
+                    target_filename = filename
+                    break
+
+        if not target_filename:
+            return {"has_program": False, "summary": f"Nessun bando trovato per '{university_name}'."}
+
+        # --- 2. RECUPERA I CHUNK SOLO DA QUEL FILE ---
+        K_VALUE = 5
+        retriever = get_retriever(settings.DB_PATH, category='calls', top_k=K_VALUE)
+        
+        retriever.search_kwargs = {'filter': {'source': target_filename}}
+
+        query = "riassunto completo del bando erasmus: requisiti, scadenze e procedura"
+        docs = retriever.get_relevant_documents(query)
+        
+        if not docs:
+            return {
+                "has_program": True, 
+                "summary": f"Bando '{target_filename}' trovato, ma non è stato possibile estrarre informazioni pertinenti."
+            }
+
+        # --- 3. GENERA IL RIASSUNTO CON GEMINI (Google AI SDK) ---
+        full_context = "\n\n---\n\n".join([doc.page_content for doc in docs])
+        
+        template = f"""
+        Sei un assistente specializzato in programmi Erasmus. 
+        Analizza il seguente testo estratto da un bando Erasmus e creane un riassunto conciso 
+        evidenziando:
+        - Periodo di apertura del bando
+        - Requisiti principali (inclusi i requisiti linguistici)
+        - Scadenze importanti
+        - Processo di candidatura
+        
+        Contesto estratto dal bando:
+        {full_context}
+        """
+        
+        model = genai.GenerativeModel("gemini-2.5-pro")
+        response = await model.generate_content_async(template)
+        
+        summary_text = response.text
+
+        return {"has_program": True, "summary": summary_text}
+        
+    except Exception as e:
+        print(f"Errore in get_call_summary: {e}")
+        raise e
 
 def get_erasmus_suggestions(course: str, preferences: str) -> list:
     """
     Orchestra il processo RAG per generare i suggerimenti.
     """
     # 1. Recupero (Retrieval)
-    retriever = get_retriever(DB_PATH)
+    retriever = get_retriever(settings.DB_PATH, category='calls')
     
-    # 2. Prompt Engineering [cite: 56]
-    template = """
+    # 2. Prompt
+    context_docs = retriever.get_relevant_documents(f"Corso: {course}, Preferenze: {preferences}")
+    context = "\n\n---\n\n".join([doc.page_content for doc in context_docs])
+
+    template = f"""
     Sei un assistente esperto per studenti che devono scegliere una meta Erasmus.
     Il tuo compito è analizzare le preferenze dello studente e le informazioni estratte dai documenti per creare una classifica personalizzata delle 3 migliori destinazioni.
     Per ogni destinazione, fornisci: nome università, città, corsi consigliati, una motivazione chiara e un punteggio di affinità da 1 a 100.
@@ -33,29 +106,100 @@ def get_erasmus_suggestions(course: str, preferences: str) -> list:
     
     --- OUTPUT RICHIESTO (FORMATO JSON) ---
     """
-    prompt = PromptTemplate.from_template(template)
     
-    # 3. Generazione (Generation) [cite: 34]
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro-latest", google_api_key=settings.GOOGLE_API_KEY)
-    
-    # 4. Creazione della "Chain" LangChain
-    rag_chain = (
-        {"context": retriever, "course": RunnablePassthrough(), "preferences": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    
-    # Combinazione degli input per la chain
-    user_input = {"course": course, "preferences": preferences}
-    
-    # Esecuzione della chain e parsing della risposta
-    response_str = rag_chain.invoke(f"Corso: {course}, Preferenze: {preferences}")
+    # 3. Generazione (Generation)
+    model = genai.GenerativeModel("gemini-1.5-pro-latest")
+    response = model.generate_content(template)
     
     try:
-        # Gemini dovrebbe restituire un JSON valido come da istruzioni [cite: 61, 64]
-        return json.loads(response_str)
-    except json.JSONDecodeError:
-        # Gestione nel caso l'output non sia un JSON valido
-        print("Errore: L'output del modello non è un JSON valido.")
+        return json.loads(response.text)
+    except (json.JSONDecodeError, AttributeError):
+        print("Errore: L'output del modello non è un JSON valido o la risposta è vuota.")
         return []
+
+def get_available_universities() -> list[str]:
+    """
+    Scansiona la cartella 'data/calls' e restituisce una lista di nomi di università
+    basata sui file PDF dei bandi trovati.
+    """
+    calls_dir = "data/calls"
+    universities = []
+    
+    if not os.path.exists(calls_dir):
+        return []
+
+    for filename in os.listdir(calls_dir):
+        if filename.lower().endswith(".pdf"):
+            # Estrae il nome dell'università dal nome del file
+            # Esempio: "bando_erasmus_pisa_24-25.pdf" -> "pisa"
+            try:
+                # Capitalizza e sostituisce i trattini per una migliore leggibilità
+                universities.append(filename)
+            except IndexError:
+                # Se il formato del file non è quello atteso, lo ignora
+                continue
+                
+    return sorted(list(set(universities)))
+
+async def analyze_destinations_for_department(home_university: str, department: str) -> list:
+    """
+    Analizza il PDF delle destinazioni per un'università specifica, estrae le università
+    partner per un dato dipartimento utilizzando Gemini e restituisce una lista strutturata.
+    """
+    try:
+        # --- 1. IDENTIFICA IL FILE PDF DELLE DESTINAZIONI ---
+        # Converte "University of Pisa" in "unipi" per matchare il nome del file
+        uni_slug = "unipi" if "pisa" in home_university.lower() else home_university.lower()
+        pdf_dir = "data/esami_incoming_students"
+        target_filename = f"destinazioni_bando_{uni_slug}_2025-2026.pdf"
+        pdf_path = os.path.join(pdf_dir, target_filename)
+
+        if not os.path.exists(pdf_path):
+            raise FileNotFoundError(f"Il file delle destinazioni non è stato trovato: {pdf_path}")
+
+        # --- 2. ESTRAI TUTTO IL TESTO DAL PDF ---
+        full_text = ""
+        with fitz.open(pdf_path) as doc:
+            for page in doc:
+                full_text += page.get_text()
+        
+        if not full_text.strip():
+            raise ValueError("Il PDF è vuoto o non è stato possibile estrarre il testo.")
+
+        # --- 3. GENERA L'ANALISI CON GEMINI ---
+        template = f"""
+        Sei un assistente universitario esperto nell'analisi di bandi Erasmus.
+        Il tuo compito è analizzare il testo completo di un bando di destinazioni fornito di seguito.
+        Devi trovare la sezione specifica per il dipartimento di "{department}".
+        Una volta trovata, estrai TUTTE le università partner elencate in quella sezione.
+
+        Per ogni università partner trovata, crea un oggetto JSON con i seguenti campi:
+        - "id": un ID univoco generato da te (es. "uni_01", "uni_02").
+        - "city_id": un ID per la città (es. "city_01", "city_02").
+        - "name": il nome completo e corretto dell'università.
+        - "description": una breve descrizione accattivante di 1-2 frasi sull'università, evidenziando i suoi punti di forza o la sua localizzazione.
+
+        Restituisci ESCLUSIVAMENTE un array JSON contenente questi oggetti. Non aggiungere testo o spiegazioni prima o dopo l'array.
+
+        --- TESTO COMPLETO DEL BANDO ---
+        {full_text}
+        """
+
+        model = genai.GenerativeModel("gemini-2.5-pro-latest")
+        response = await model.generate_content_async(template)
+        
+        # Pulisce la risposta per estrarre solo il JSON
+        json_match = re.search(r'\[.*\]', response.text, re.DOTALL)
+        if not json_match:
+            raise ValueError("Gemini non ha restituito un array JSON valido.")
+            
+        destinations_data = json.loads(json_match.group(0))
+        return destinations_data
+
+    except FileNotFoundError as e:
+        print(f"Errore file in analyze_destinations: {e}")
+        # Restituisce un errore specifico che l'endpoint può gestire
+        raise e
+    except Exception as e:
+        print(f"Errore generico in analyze_destinations: {e}")
+        raise e

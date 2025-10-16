@@ -18,3 +18,6 @@ sentence-transformers # Ottima libreria per embedding open-source
 
 # Configuration
 python-dotenv
+
+# PyMuPDF
+PyMuPDF

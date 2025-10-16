@@ -1,60 +1,77 @@
 # app/schemas/student.py
 
-from pydantic import BaseModel, Field
-from typing import List
+from pydantic import BaseModel, Field, ConfigDict
+from typing import List, Optional
+from enum import Enum
 
-# =================================================================
-#               MODELLO PER LA RICHIESTA IN INPUT
-# =================================================================
-# Questo modello definisce la struttura dei dati che il frontend
-# invierà al nostro backend. FastAPI lo userà per validare
-# che la richiesta sia formata correttamente.
 
-class StudentRequest(BaseModel):
-    """
-    Schema per i dati in input: le preferenze dello studente.
-    """
-    course_of_study: str = Field(
-        ..., 
-        example="Ingegneria Informatica",
-        description="Il corso di studio attuale dello studente."
-    )
-    preferences: str = Field(
-        ..., 
-        example="Mi piacerebbe studiare AI in una città grande con un clima mite e un basso costo della vita.",
-        description="Descrizione in linguaggio naturale delle preferenze per la meta Erasmus."
-    )
-
-    class Config:
-        # Aggiunge un esempio che sarà visibile nella documentazione automatica di FastAPI (/docs)
-        json_schema_extra = {
-            "example": {
-                "course_of_study": "Economia e Management",
-                "preferences": "Vorrei un'università prestigiosa in una capitale europea, possibilmente dove posso migliorare il mio inglese."
-            }
-        }
+class Period(str, Enum):
+    """Periodo di studio Erasmus."""
+    FALL = "fall"
+    SPRING = "spring"
 
 
 # =================================================================
-#               MODELLI PER LA RISPOSTA IN OUTPUT
+#               MODELLI PER LE RICHIESTE IN INPUT
 # =================================================================
-# Questi modelli definiscono la struttura dei dati che il nostro
+
+# STEP 1: Richiesta iniziale con università
+class UniversityRequest(BaseModel):
+    """Richiesta informazioni sul bando Erasmus."""
+    model_config = ConfigDict(extra='forbid')
+    home_university: str = Field(..., example="University of Pisa", description="Università di provenienza")
+
+# STEP 2: Richiesta analisi destinazioni compatibili
+class DepartmentAndStudyPlanRequest(BaseModel):
+    """Richiesta analisi destinazioni basata su dipartimento, piano di studi e periodo."""
+    model_config = ConfigDict(extra='forbid')
+    session_id: str = Field(..., example="6f1d2c9e-9a3b-4a9e-94a1-3e2f8c5d9b1a", description="ID di sessione restituito dallo step 1")
+    department: str = Field(..., example="Computer Science", description="Dipartimento di afferenza")
+    study_plan: List[str] = Field(..., example=["Algorithms", "Machine Learning", "Database"], 
+                                description="Lista degli esami nel piano di studi")
+    period: Period = Field(..., example="fall", description="Periodo desiderato (fall/spring)")
+
+# STEP 3: Richiesta analisi esami per università scelta
+class DestinationUniversityRequest(BaseModel):
+    """Richiesta analisi esami disponibili presso università di destinazione."""
+    destination_id: str = Field(..., example="uni123", description="ID dell'università di destinazione")
+    study_plan: List[str] = Field(..., example=["Algorithms", "Machine Learning"], 
+                                description="Piano di studi per matching con esami disponibili")
+
+# =================================================================
+#               MODELLI PER LE RISPOSTE IN OUTPUT
+# =================================================================
+
+# STEP 1: Risposta con informazioni sul bando
+class ErasmusProgramResponse(BaseModel):
+    """Risposta con informazioni sul bando Erasmus."""
+    has_program: bool = Field(..., description="True se il bando esiste, False altrimenti")
+    summary: Optional[str] = Field(None, description="Riassunto del bando se esistente")
+    session_id: Optional[str] = Field(None, description="ID di sessione da usare negli step successivi")
+
+# STEP 2: Risposta con destinazioni compatibili
+class DestinationUniversity(BaseModel):
+    """Rappresenta una singola università di destinazione."""
+    id: str = Field(..., example="uni123", description="ID univoco dell'università")
+    city_id: str = Field(..., example="city456", description="ID della città")
+    name: str = Field(..., example="Technical University of Munich")
+    description: str = Field(..., description="Descrizione generata da Gemini")
+
+class DestinationsResponse(BaseModel):
+    """Lista delle destinazioni compatibili."""
+    destinations: List[DestinationUniversity]
+
+# STEP 3: Risposta con analisi esami
+class AvailableExam(BaseModel):
+    """Rappresenta un esame disponibile presso l'università di destinazione."""
+    name: str = Field(..., example="Advanced Algorithms")
+    credits: int = Field(..., example=6)
+    description: str = Field(..., example="Advanced course on algorithm design...")
+    period: Period = Field(..., example="fall")
+
+class ExamsAnalysisResponse(BaseModel):
+    """Risposta completa con PDF esami e analisi di compatibilità."""
+    pdf_url: str = Field(..., description="URL al PDF con lista completa esami")
+    available_exams: List[AvailableExam] = Field(..., description="Esami compatibili con il piano di studi")
 # backend invierà come risposta. FastAPI li userà per serializzare
 # i dati in formato JSON.
-
-class DestinationSuggestion(BaseModel):
-    """
-    Schema per una singola destinazione suggerita.
-    """
-    university_name: str = Field(..., example="Universidad Politécnica de Valencia")
-    city: str = Field(..., example="Valencia, Spagna")
-    recommended_courses: List[str] = Field(..., example=["Machine Learning", "Data Science Fundamentals"])
-    reasoning: str = Field(..., description="Spiegazione del perché questa meta è un buon match.")
-    affinity_score: int = Field(..., ge=1, le=100, description="Punteggio di affinità da 1 a 100.")
-
-
-class StudentResponse(BaseModel):
-    """
-    Schema per la risposta finale, che contiene una lista di destinazioni.
-    """
-    destinations: List[DestinationSuggestion]

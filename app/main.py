@@ -1,6 +1,6 @@
 # app/main.py
 from fastapi import FastAPI
-from .api.endpoints import matching
+from .api.endpoints import endpoints_student
 
 app = FastAPI(
     title="Erasmus Suggester API",
@@ -8,9 +8,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Include il router con l'endpoint /match
-app.include_router(matching.router, prefix="/api/v1")
+# In-memory session store (simple, volatile). Use a proper store for production.
+app.state.session_store = {}
+
+app.include_router(endpoints_student.router, prefix="/api/v1")
 
 @app.get("/", tags=["Root"])
 def read_root():
+    print("ciao")
     return {"message": "Benvenuto nell'API di Erasmus Suggester!"}
