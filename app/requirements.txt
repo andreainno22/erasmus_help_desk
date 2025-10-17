@@ -9,6 +9,7 @@ google-generativeai
 langchain
 langchain-google-genai
 pypdf
+pdfplumber
 beautifulsoup4
 
 # Vector Database & Embeddings

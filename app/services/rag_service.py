@@ -3,7 +3,9 @@ import os
 import json
 import google.generativeai as genai
 import fitz  # PyMuPDF
+import pdfplumber
 import re
+from pathlib import Path
 
 from .vector_db_service import get_retriever
 from ..core.config import settings
@@ -143,30 +145,62 @@ def get_available_universities() -> list[str]:
 
 async def analyze_destinations_for_department(home_university: str, department: str) -> list:
     """
-    Analizza il PDF delle destinazioni per un'università specifica, estrae le università
-    partner per un dato dipartimento utilizzando Gemini e restituisce una lista strutturata.
+    Analizza il PDF delle destinazioni per un'università specifica:
+    1. Estrae il testo con pdfplumber
+    2. Pulisce e salva il testo in un file .txt
+    3. Usa Gemini per trovare le destinazioni del dipartimento specifico
     """
     try:
         # --- 1. IDENTIFICA IL FILE PDF DELLE DESTINAZIONI ---
         # Converte "University of Pisa" in "unipi" per matchare il nome del file
-        uni_slug = "unipi" if "pisa" in home_university.lower() else home_university.lower()
-        pdf_dir = "data/esami_incoming_students"
-        target_filename = f"destinazioni_bando_{uni_slug}_2025-2026.pdf"
+        pdf_dir = "data/destinazioni"
+        target_filename = f"destinazioni_bando_{home_university}.pdf"
         pdf_path = os.path.join(pdf_dir, target_filename)
 
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"Il file delle destinazioni non è stato trovato: {pdf_path}")
 
-        # --- 2. ESTRAI TUTTO IL TESTO DAL PDF ---
+        # --- 2. ESTRAI IL TESTO DAL PDF USANDO PDFPLUMBER ---
         full_text = ""
-        with fitz.open(pdf_path) as doc:
-            for page in doc:
-                full_text += page.get_text()
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                # Estrai tabelle strutturate
+                tables = page.extract_tables()
+                for table in tables:
+                    for row in table:
+                        cleaned_row = [
+                            cell.replace('\n', ' ').strip() if cell is not None else "" 
+                            for cell in row
+                        ]
+                        line = " | ".join(cleaned_row)
+                        full_text += line + "\n"
+                
+                # Estrai anche testo normale (non in tabelle)
+                page_text = page.extract_text()
+                if page_text:
+                    full_text += page_text + "\n"
         
         if not full_text.strip():
             raise ValueError("Il PDF è vuoto o non è stato possibile estrarre il testo.")
 
-        # --- 3. GENERA L'ANALISI CON GEMINI ---
+        # --- 3. PULISCI IL TESTO ---
+        cleaned_text = re.sub(r'\s+', ' ', full_text).strip()
+        
+        # --- 4. SALVA IL TESTO PULITO IN UN FILE .TXT ---
+        output_dir = Path("data/destinazioni/processed/")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        txt_file = output_dir / f"destinazioni_{home_university}_LLM_ready.txt"
+        
+        with open(txt_file, 'w', encoding='utf-8') as f:
+            f.write(cleaned_text)
+        
+        print(f"✅ Testo estratto e salvato in: {txt_file}")
+
+        # --- 5. LEGGI IL FILE TXT PER PASSARLO ALL'LLM ---
+        with open(txt_file, 'r', encoding='utf-8') as f:
+            llm_ready_text = f.read()
+
+        # --- 6. GENERA L'ANALISI CON GEMINI ---
         template = f"""
         Sei un assistente universitario esperto nell'analisi di bandi Erasmus.
         Il tuo compito è analizzare il testo completo di un bando di destinazioni fornito di seguito.
@@ -182,7 +216,7 @@ async def analyze_destinations_for_department(home_university: str, department: 
         Restituisci ESCLUSIVAMENTE un array JSON contenente questi oggetti. Non aggiungere testo o spiegazioni prima o dopo l'array.
 
         --- TESTO COMPLETO DEL BANDO ---
-        {full_text}
+        {llm_ready_text}
         """
 
         model = genai.GenerativeModel("gemini-2.5-pro-latest")
