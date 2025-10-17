@@ -15,5 +15,4 @@ app.include_router(endpoints_student.router, prefix="/api/v1")
 
 @app.get("/", tags=["Root"])
 def read_root():
-    print("ciao")
     return {"message": "Benvenuto nell'API di Erasmus Suggester!"}

@@ -7,7 +7,7 @@
    - Shortlist: link "Sito Erasmus" per ogni meta
 -------------------------------------------------------- */
 
-const DEFAULT_API_BASE = "http://127.0.0.1:8000";
+//const DEFAULT_API_BASE = "http://127.0.0.1:8000";
 
 
 const SESSION_KEYS = {
