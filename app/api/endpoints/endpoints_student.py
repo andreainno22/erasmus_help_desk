@@ -83,6 +83,9 @@ async def analyze_destinations(request: DepartmentAndStudyPlanRequest, req: Requ
             raise HTTPException(status_code=400, detail="Sessione non valida o scaduta. Rieseguire lo Step 1.")
 
         home_university = session["home_university"]
+        
+        # Salva il periodo nella sessione per usarlo nello step3
+        session["period"] = request.period.value  # .value per ottenere la stringa dall'enum
 
         # Chiamata al servizio per analizzare le destinazioni del dipartimento
         from ...services.rag_service import analyze_destinations_for_department
@@ -108,6 +111,9 @@ async def analyze_exams(
         session = req.app.state.session_store.get(session_id)
         if not session or "home_university" not in session:
             raise HTTPException(status_code=400, detail="Sessione non valida o scaduta.")
+        
+        # Recupera il periodo dalla sessione (salvato nello step2)
+        period = session.get("period", None)  # None se non è stato fatto lo step2
 
         # Verifica che il file sia un PDF
         if not study_plan_file.filename.lower().endswith('.pdf'):
@@ -126,11 +132,13 @@ async def analyze_exams(
             
             study_plan_text = extract_text_from_pdf(tmp_file_path)
             print(f"📚 Piano di studi estratto: {len(study_plan_text)} caratteri")
+            print(f"📅 Periodo selezionato: {period if period else 'Non specificato'}")
             
-            # Analizza la compatibilità degli esami
+            # Analizza la compatibilità degli esami, passando anche il periodo
             analysis_result = await analyze_exams_compatibility(
                 destination_university_name=destination_university_name,
-                student_study_plan_text=study_plan_text
+                student_study_plan_text=study_plan_text,
+                period=period
             )
             
             return ExamsAnalysisResponse(**analysis_result)

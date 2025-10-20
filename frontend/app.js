@@ -327,7 +327,50 @@ function renderExams() {
                       <div class="text-muted" style="font-size:13px">
                         ${match.credits_student} → ${match.credits_destination}
                       </div>
-                      ${match.notes ? `<p class="text-muted" style="margin-top:6px; font-size:13px">${match.notes}</p>` : ''}
+                      ${match.notes ? `
+                        <div style="margin-top:8px">
+                          ${(() => {
+                            // Analizza il campo notes per verificare il periodo
+                            const notes = match.notes.toLowerCase();
+                            const userPeriod = state.period || '';
+                            
+                            // Cerca pattern di periodo nelle note (fall, spring, semester 1/2, autumn, etc)
+                            const hasFall = /fall|autumn|semester 1|first semester|autunno|primo semestre/i.test(notes);
+                            const hasSpring = /spring|semester 2|second semester|primavera|secondo semestre/i.test(notes);
+                            
+                            let periodIcon = '';
+                            let periodText = '';
+                            
+                            if (hasFall || hasSpring) {
+                              // Se troviamo informazioni sul periodo
+                              const matchesFall = hasFall && userPeriod.toLowerCase() === 'fall';
+                              const matchesSpring = hasSpring && userPeriod.toLowerCase() === 'spring';
+                              
+                              if (matchesFall || matchesSpring) {
+                                // Periodo coincide
+                                periodIcon = '✅';
+                                periodText = `Il corso si tiene durante il periodo selezionato!`;
+                              } else if ((hasFall && userPeriod.toLowerCase() === 'spring') || 
+                                         (hasSpring && userPeriod.toLowerCase() === 'fall')) {
+                                // Periodo NON coincide
+                                periodIcon = '❌';
+                                periodText = `Attenzione: il corso si tiene in un periodo diverso da quello selezionato`;
+                              }
+                            }
+                            
+                            return `
+                              ${periodIcon && periodText ? `
+                                <div style="padding:6px 10px; background:${periodIcon === '✅' ? '#d1fae5' : '#fee2e2'}; 
+                                            border-left:3px solid ${periodIcon === '✅' ? '#059669' : '#dc2626'}; 
+                                            border-radius:4px; margin-bottom:6px; font-size:13px">
+                                  <strong>${periodIcon} ${periodText}</strong>
+                                </div>
+                              ` : ''}
+                              <p class="text-muted" style="font-size:13px">${match.notes}</p>
+                            `;
+                          })()}
+                        </div>
+                      ` : ''}
                     </div>
                     <div style="padding:4px 12px; background:${bgColor}; color:${textColor}; border-radius:4px; font-size:12px; font-weight:600">
                       ${match.compatibility || 'N/A'}
@@ -349,14 +392,48 @@ function renderExams() {
       <ul class="space-y" style="margin-top:8px">
         ${ex.suggested_exams
           .map(
-            (sugg) => `
+            (sugg) => {
+              // Analizza il campo reason per verificare il periodo
+              const reason = (sugg.reason || '').toLowerCase();
+              const userPeriod = state.period || '';
+              
+              // Cerca pattern di periodo nelle note
+              const hasFall = /fall|autumn|semester 1|first semester|autunno|primo semestre/i.test(reason);
+              const hasSpring = /spring|semester 2|second semester|primavera|secondo semestre/i.test(reason);
+              
+              let periodIcon = '';
+              let periodText = '';
+              
+              if (hasFall || hasSpring) {
+                const matchesFall = hasFall && userPeriod.toLowerCase() === 'fall';
+                const matchesSpring = hasSpring && userPeriod.toLowerCase() === 'spring';
+                
+                if (matchesFall || matchesSpring) {
+                  periodIcon = '✅';
+                  periodText = `Disponibile nel periodo selezionato`;
+                } else if ((hasFall && userPeriod.toLowerCase() === 'spring') || 
+                           (hasSpring && userPeriod.toLowerCase() === 'fall')) {
+                  periodIcon = '❌';
+                  periodText = `Disponibile in un periodo diverso`;
+                }
+              }
+              
+              return `
           <li class="card" style="background:#fefce8; border-color:#facc15">
             <div class="label">${sugg.course_name}</div>
             <div class="text-muted" style="font-size:13px; margin-top:4px">
               ${sugg.credits} • ${sugg.category || 'Varie'}
             </div>
+            ${periodIcon && periodText ? `
+              <div style="padding:4px 8px; background:${periodIcon === '✅' ? '#d1fae5' : '#fee2e2'}; 
+                          border-left:3px solid ${periodIcon === '✅' ? '#059669' : '#dc2626'}; 
+                          border-radius:4px; margin-top:6px; font-size:12px">
+                <strong>${periodIcon} ${periodText}</strong>
+              </div>
+            ` : ''}
             <p class="text-muted" style="margin-top:6px; font-size:13px">${sugg.reason || ''}</p>
-          </li>`
+          </li>`;
+            }
           )
           .join("")}
       </ul>

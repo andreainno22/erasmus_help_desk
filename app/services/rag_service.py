@@ -226,6 +226,7 @@ async def get_call_summary(university_name: str) -> dict:
         - Requisiti principali (inclusi i requisiti linguistici)
         - Scadenze importanti
         - Processo di candidatura
+        - Se presente, il numero di CFU (crediti formativi universitari) minimi che lo studente deve guadagnare durante l'erasmus
         
         Contesto estratto dal bando:
         {full_context}
@@ -553,7 +554,7 @@ async def analyze_destinations_for_department(home_university: str, department: 
         print(f"Errore generico in analyze_destinations: {e}")
         raise e
 
-async def analyze_exams_compatibility(destination_university_name: str, student_study_plan_text: str) -> dict:
+async def analyze_exams_compatibility(destination_university_name: str, student_study_plan_text: str, period: str = None) -> dict:
     """
     Analizza la compatibilità degli esami tra il piano di studi dello studente 
     e gli esami disponibili presso l'università di destinazione.
@@ -561,6 +562,7 @@ async def analyze_exams_compatibility(destination_university_name: str, student_
     Args:
         destination_university_name: Nome dell'università di destinazione
         student_study_plan_text: Testo del piano di studi dello studente (estratto dal PDF)
+        period: Periodo Erasmus selezionato (fall/spring) - opzionale
         
     Returns:
         Dizionario con:
@@ -602,6 +604,12 @@ async def analyze_exams_compatibility(destination_university_name: str, student_
 
         print(f"✅ Estratto testo da {target_filename} ({len(exam_text)} caratteri)")
         print(f"🎓 Piano di studi studente ({len(student_study_plan_text)} caratteri)")
+        
+        # Prepara l'informazione sul periodo per il prompt
+        period_info = ""
+        if period:
+            period_name = "autunnale (Fall)" if period.lower() == "fall" else "primaverile (Spring)"
+            period_info = f"\n\n**PERIODO ERASMUS SELEZIONATO:** {period_name}\n"
 
         # --- 3. ANALIZZA LA COMPATIBILITÀ CON GEMINI ---
         template = f"""
@@ -614,13 +622,14 @@ async def analyze_exams_compatibility(destination_university_name: str, student_
 
         **ESAMI DISPONIBILI PRESSO L'UNIVERSITÀ DI DESTINAZIONE ({destination_university_name}):**
         {exam_text}
-
+        {period_info}
         **ISTRUZIONI:**
         1. Analizza il piano di studi dello studente per identificare gli esami
         2. Trova corrispondenze tra esami dello studente e corsi dell'università di destinazione
         3. Suggerisci esami aggiuntivi interessanti per il profilo dello studente
         4. Calcola un punteggio di compatibilità complessivo (0-100)
         5. Fornisci un riassunto dell'analisi
+        {"6. IMPORTANTE: Indica nel campo 'notes' degli esami se il corso è disponibile nel periodo selezionato dallo studente. Se il PDF degli esami specifica i periodi (Fall/Spring, Semester 1/2, ecc.), usa queste informazioni per segnalare la compatibilità temporale." if period else ""}
 
         **FORMATO DI RISPOSTA RICHIESTO (JSON):**
         {{
@@ -631,25 +640,27 @@ async def analyze_exams_compatibility(destination_university_name: str, student_
                     "compatibility": "alta",
                     "credits_student": "6 CFU",
                     "credits_destination": "6 ECTS",
-                    "notes": "Descrizione della corrispondenza"
+                    "notes": "Descrizione della corrispondenza{' + indicazione del periodo se disponibile nel PDF (es: Disponibile in Fall Semester)' if period else ''}"
                 }}
             ],
             "suggested_exams": [
                 {{
                     "course_name": "Nome corso suggerito",
                     "credits": "6 ECTS",
-                    "reason": "Motivo del suggerimento",
+                    "reason": "Motivo del suggerimento{' + periodo se disponibile' if period else ''}",
                     "category": "Computer Science"
                 }}
             ],
             "compatibility_score": 85.0,
-            "analysis_summary": "Riassunto dettagliato dell'analisi di compatibilità..."
+            "analysis_summary": "Riassunto dettagliato dell'analisi di compatibilità...{' Menziona quanti degli esami trovati sono disponibili nel periodo selezionato.' if period else ''}"
         }}
 
         IMPORTANTE: 
         - Restituisci SOLO il JSON, senza testo aggiuntivo prima o dopo
         - Se non trovi corrispondenze, lascia gli array vuoti ma mantieni la struttura
         - Il punteggio deve essere un numero tra 0 e 100
+        {f"- Dai priorità agli esami disponibili nel periodo {period_name} selezionato dallo studente" if period else ""}
+        {f"- Nel riassunto finale, specifica esplicitamente quanti esami sono compatibili con il periodo {period_name}" if period else ""}
         """
 
         model = genai.GenerativeModel("gemini-2.0-flash")
