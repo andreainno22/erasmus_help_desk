@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Erasmus Help Desk</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="/static/styles.css" />
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
   </head>
   <body>
@@ -44,7 +44,9 @@
             <div class="space-y">
               <div class="space-y-xxs">
                 <label for="university" class="label">Ateneo <span class="required" aria-hidden="true">*</span></label>
-                <input id="university" class="input" placeholder="Es. Università di Pisa" />
+                <select id="university" class="select">
+                  <option value="">-- Seleziona un'università --</option>
+                </select>
               </div>
               <button id="find_bando_btn" class="btn btn-primary btn-full">Cerca bando</button>
             </div>
@@ -55,13 +57,15 @@
             <div class="space-y">
               <div class="space-y-xxs">
                 <label for="dept" class="label">Dipartimento <span class="required" aria-hidden="true">*</span></label>
-                <input id="dept" class="input" placeholder="Es. Ingegneria Informatica" />
+                <select id="dept" class="select">
+                  <option value="">-- Seleziona prima un'università --</option>
+                </select>
               </div>
               <div class="space-y-xxs">
                 <label for="period" class="label">Semestre <span class="required" aria-hidden="true">*</span></label>
                 <select id="period" class="select">
-                  <option value="Fall">Fall</option>
-                  <option value="Spring">Spring</option>
+                  <option value="fall">Fall</option>
+                  <option value="spring">Spring</option>
                 </select>
               </div>
               <!-- <div class="space-y-xxs">
@@ -123,6 +127,6 @@
       <div class="spinner" aria-label="Loading"></div>
     </div>
 
-    <script defer src="app.js"></script>
+    <script defer src="/static/app.js"></script>
   </body>
 </html>

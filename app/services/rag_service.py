@@ -5,6 +5,7 @@ import google.generativeai as genai
 import fitz  # PyMuPDF
 import pdfplumber
 import re
+import markdown
 from pathlib import Path
 
 from .vector_db_service import get_retriever
@@ -41,6 +42,24 @@ def clean_and_parse_json_response(response_text: str, expected_type: str = "arra
     
     cleaned_text = cleaned_text.strip()
     
+    # Prova prima a parsare il testo completo se inizia già con [ o {
+    if expected_type == "array" and cleaned_text.startswith('['):
+        try:
+            parsed_data = json.loads(cleaned_text)
+            if isinstance(parsed_data, list):
+                print(f"✅ JSON array parsato direttamente: {len(parsed_data)} elementi")
+                return parsed_data
+        except json.JSONDecodeError:
+            pass  # Continua con il metodo regex
+    elif expected_type == "object" and cleaned_text.startswith('{'):
+        try:
+            parsed_data = json.loads(cleaned_text)
+            if isinstance(parsed_data, dict):
+                print(f"✅ JSON object parsato direttamente")
+                return parsed_data
+        except json.JSONDecodeError:
+            pass  # Continua con il metodo regex
+    
     # Cerca il pattern JSON appropriato
     if expected_type == "array":
         json_match = re.search(r'\[.*\]', cleaned_text, re.DOTALL)
@@ -58,11 +77,38 @@ def clean_and_parse_json_response(response_text: str, expected_type: str = "arra
             raise ValueError(f"JSON parsato non è un array: {type(parsed_data)}")
         elif expected_type == "object" and not isinstance(parsed_data, dict):
             raise ValueError(f"JSON parsato non è un oggetto: {type(parsed_data)}")
-            
+        
+        print(f"✅ JSON {expected_type} parsato con regex: {len(parsed_data) if isinstance(parsed_data, list) else 'N/A'} elementi")
         return parsed_data
         
     except json.JSONDecodeError as e:
         raise ValueError(f"Errore nel parsing JSON: {e}. Testo: {json_match.group(0)[:200]}...")
+
+def markdown_to_html(text: str) -> str:
+    """
+    Converte testo in formato Markdown in HTML.
+    Utile per rendere correttamente le risposte formattate di Gemini nel frontend.
+    
+    Args:
+        text: Testo in formato Markdown
+        
+    Returns:
+        HTML formattato
+    """
+    if not text:
+        return ""
+    
+    # Converti Markdown in HTML
+    html = markdown.markdown(
+        text,
+        extensions=[
+            'nl2br',      # Converte \n in <br>
+            'fenced_code', # Supporto per code blocks con ```
+            'tables',     # Supporto per tabelle
+        ]
+    )
+    
+    return html
 
 def extract_department_section(full_text: str, department: str) -> str:
     """
@@ -186,12 +232,13 @@ async def get_call_summary(university_name: str) -> dict:
         """
 
         model = genai.GenerativeModel("gemini-2.0-flash")
-        #response = await model.generate_content_async(template)
-        # summary_text = response.text
+        response = await model.generate_content_async(template)
+        summary_text = response.text
+        
+        # Converti il Markdown in HTML per una corretta renderizzazione nel frontend
+        summary_html = markdown_to_html(summary_text)
 
-        summary_text = "test"
-
-        return {"has_program": True, "summary": summary_text}
+        return {"has_program": True, "summary": summary_html}
         
     except Exception as e:
         print(f"Errore in get_call_summary: {e}")

@@ -14,6 +14,19 @@ from uuid import uuid4
 
 router = APIRouter()
 
+@router.get("/universities", response_model=List[str])
+async def list_available_universities():
+    """
+    Restituisce la lista delle università per cui è disponibile un bando.
+    Questa lista può essere usata nel frontend per popolare un menu a tendina.
+    """
+    try:
+        universities = get_available_universities()
+        return universities
+    except Exception as e:
+        print(f"Errore nell'endpoint /universities: {e}")
+        raise HTTPException(status_code=500, detail="Errore nel recupero delle università disponibili.")
+
 @router.post("/step1", response_model=ErasmusProgramResponse)
 async def get_erasmus_program(body: UniversityRequest, req: Request):
     """
@@ -132,18 +145,7 @@ async def analyze_exams(
         print(f"Errore in analyze_exams: {e}")
         raise HTTPException(status_code=500, detail=f"Errore nell'analisi degli esami: {str(e)}")
 
-@router.get("/universities", response_model=List[str])
-async def list_available_universities():
-    """
-    Restituisce la lista delle università per cui è disponibile un bando.
-    Questa lista può essere usata nel frontend per popolare un menu a tendina.
-    """
-    try:
-        universities = get_available_universities()
-        return universities
-    except Exception as e:
-        print(f"Errore nell'endpoint /universities: {e}")
-        raise HTTPException(status_code=500, detail="Errore nel recupero delle università disponibili.")
+
 
 @router.get("/files/exams/{filename}")
 async def download_exam_pdf(filename: str):
