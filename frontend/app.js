@@ -123,7 +123,7 @@ const state = {
   universityFrom: "",
   department: "",
   period: "Fall",
-  studyPlanText: "",
+  // studyPlanText: "",
   studyPlanFile: null,
   studyPlanFileName: "",
 
@@ -154,7 +154,7 @@ const resetBtn = $("#reset_btn");
 const univInput = $("#university");
 const deptInput = $("#dept");
 const periodSelect = $("#period");
-const studyInput = $("#study");
+// const studyInput = $("#study");
 const findBandoBtn = $("#find_bando_btn");
 const shortlistBtn = $("#shortlist_btn");
 const studyPdfInput = $("#study_pdf");
@@ -355,8 +355,10 @@ function renderAll() {
   univInput.value = state.universityFrom;
   deptInput.value = state.department;
   periodSelect.value = state.period;
-  studyInput.value = state.studyPlanText;
-  if (studyPdfNameEl) studyPdfNameEl.textContent = state.studyPlanFileName ? `Caricato: ${state.studyPlanFileName}` : ""; // NEW
+  if (studyPdfNameEl) studyPdfNameEl.textContent = state.studyPlanFileName ? `Caricato: ${state.studyPlanFileName}` : "";
+
+  // studyInput.value = state.studyPlanText;
+  // if (studyPdfNameEl) studyPdfNameEl.textContent = state.studyPlanFileName ? `Caricato: ${state.studyPlanFileName}` : ""; // NEW
 
   renderStepper();
   renderBando();
@@ -432,7 +434,7 @@ async function fetchShortlist() {
       fd.append("university_from", state.universityFrom.trim());
       fd.append("department", state.department.trim());
       fd.append("period", state.period);
-      if (state.studyPlanText.trim()) fd.append("study_plan_text", state.studyPlanText.trim());
+      // if (state.studyPlanText.trim()) fd.append("study_plan_text", state.studyPlanText.trim());
       if (state.studyPlanFile) fd.append("study_plan_pdf", state.studyPlanFile, state.studyPlanFile.name);
 
       const res = await fetch(`${state.apiBase}/mete/shortlist`, {
@@ -527,10 +529,10 @@ function wireEvents() {
     state.period = periodSelect.value;
     renderAll();
   });
-  studyInput.addEventListener("input", () => {
-    state.studyPlanText = studyInput.value;
-    renderAll();
-  });
+  // studyInput.addEventListener("input", () => {
+  //   state.studyPlanText = studyInput.value;
+  //   renderAll();
+  // });
 
   // Gestione upload PDF obbligatorio
   if (studyPdfInput) {
